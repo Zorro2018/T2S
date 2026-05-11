@@ -7,6 +7,7 @@ const EL_MAX_CHARS = 4000;
 let appState       = 'idle';        // idle | playing | paused | loading | done
 let mode           = 'browser';     // browser | elevenlabs
 let charIndexStart = 0;             // char offset where current browser utterance starts
+let pausedAtChar   = 0;             // char position saved when user hits Pause
 let isSeeking      = false;
 let seekBarHeld    = false;   // true while mouse/touch is physically held on bar
 let elVoices           = [];
@@ -15,6 +16,8 @@ let synthBugTimer      = null;   // Chrome 15-sec pause bug workaround
 let progressTimer      = null;   // time-based progress fallback ticker
 let speechStartTime    = 0;      // Date.now() when current utterance began
 let estimatedDurationMs = 0;     // rough estimate of total utterance length
+let currentFullText    = '';     // full text of the active read (shared across utterances)
+let lastKnownChar      = 0;      // most recent char position (from boundary or ticker)
 
 const synth = window.speechSynthesis;
 let utterance = null;
@@ -197,6 +200,8 @@ function startProgressTimer(fullText, fromChar, rate) {
   progressTimer = setInterval(() => {
     if (isSeeking || appState !== 'playing') return;
     const fraction = Math.min(0.99, (Date.now() - speechStartTime) / estimatedDurationMs);
+    // Keep lastKnownChar in sync so Pause can resume from the right spot
+    lastKnownChar = fromChar + Math.floor(fraction * (fullText.length - fromChar));
     setProgress(startPct + fraction * pctRange);
   }, 150);
 }
@@ -257,7 +262,9 @@ function commitSeek() {
 function startBrowserUtterance(fullText, fromChar) {
   const remaining = fullText.substring(fromChar);
   if (!remaining.trim()) return;
-  charIndexStart = fromChar;
+  currentFullText = fullText;
+  charIndexStart  = fromChar;
+  lastKnownChar   = fromChar;
 
   utterance = new SpeechSynthesisUtterance(remaining);
 
@@ -269,17 +276,17 @@ function startBrowserUtterance(fullText, fromChar) {
   utterance.pitch  = parseFloat(el.pitchSlider.value);
   utterance.volume = parseFloat(el.volumeSlider.value);
 
-  // onboundary = precision correction on top of the ticker (unreliable on Windows)
+  // Precision update from boundary events (unreliable on Windows, ticker is the fallback)
   utterance.onboundary = (e) => {
     if (isSeeking || e.name !== 'word') return;
     const totalChar = charIndexStart + e.charIndex;
+    lastKnownChar   = totalChar;
     setProgress((totalChar / fullText.length) * 100);
     const word = fullText.substring(totalChar, totalChar + (e.charLength || 12)).split(/\s/)[0];
     showWord(word);
   };
 
   utterance.onstart = () => {
-    // Kick off the ticker once speech actually starts
     startProgressTimer(fullText, fromChar, rate);
   };
 
@@ -329,6 +336,8 @@ function seekBrowser(pct) {
   clearSynthBugTimer();
   clearProgressTimer();
   synth.cancel();
+  lastKnownChar = startChar;
+  pausedAtChar  = startChar;
 
   if (wasActive) {
     startBrowserUtterance(text, startChar);
@@ -454,8 +463,11 @@ function handlePlay() {
   const text = el.textInput.value.trim();
   if (!text) { flashEmpty(); return; }
   clearSynthBugTimer();
+  clearProgressTimer();
   synth.cancel();
-  setProgress(0);
+  pausedAtChar  = 0;
+  lastKnownChar = 0;
+  setProgress(0, true);
   startBrowserUtterance(text, 0);
   setStatus('playing');
   updateButtons('playing');
@@ -463,20 +475,32 @@ function handlePlay() {
 
 function handlePause() {
   if (mode === 'elevenlabs') {
-    el.elAudio.pause(); setStatus('paused'); updateButtons('paused');
-  } else if (synth.speaking && !synth.paused) {
-    clearSynthBugTimer();
-    synth.pause(); setStatus('paused'); updateButtons('paused');
+    el.elAudio.pause();
+    setStatus('paused'); updateButtons('paused');
+    return;
   }
+  // synth.pause() is unreliable on Windows — cancel and save position instead
+  pausedAtChar = lastKnownChar;
+  clearSynthBugTimer();
+  clearProgressTimer();
+  synth.cancel();
+  setStatus('paused'); updateButtons('paused');
 }
 
 function handleResume() {
   if (mode === 'elevenlabs') {
-    el.elAudio.play(); setStatus('playing'); updateButtons('playing');
-  } else if (synth.paused) {
-    synth.resume(); startSynthBugTimer();
+    el.elAudio.play();
     setStatus('playing'); updateButtons('playing');
+    return;
   }
+  // Restart speech from where we paused
+  const text = el.textInput.value.trim();
+  if (!text) return;
+  // Snap pausedAtChar to a clean word boundary
+  const spaceIdx  = text.lastIndexOf(' ', pausedAtChar);
+  const startChar = pausedAtChar > 0 ? (spaceIdx > 0 ? spaceIdx + 1 : 0) : 0;
+  startBrowserUtterance(text, startChar);
+  setStatus('playing'); updateButtons('playing');
 }
 
 function handleStop() {
@@ -486,6 +510,8 @@ function handleStop() {
   if (elAbortCtrl) { elAbortCtrl.abort(); elAbortCtrl = null; }
   el.elAudio.pause();
   el.elAudio.currentTime = 0;
+  pausedAtChar  = 0;
+  lastKnownChar = 0;
   setStatus('idle');
   updateButtons('idle');
   setProgress(0, true);
