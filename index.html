@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐶 Puppy Text Reader</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { font-family:'Inter',sans-serif; background:#f5f5f5; }
+
+    /* ── Buttons ───────────────────────────────────────────────────── */
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:10px 24px; border-radius:12px;
+           font-weight:600; font-size:.875rem; border:none; cursor:pointer; transition:background .15s,transform .1s; }
+    .btn:disabled { opacity:.4; cursor:not-allowed; }
+    .btn:active:not(:disabled) { transform:scale(.97); }
+    .btn-blue  { background:#0053e2; color:#fff; }
+    .btn-blue:hover:not(:disabled)  { background:#1263f2; }
+    .btn-spark { background:#ffc220; color:#1a1a1a; }
+    .btn-spark:hover:not(:disabled) { background:#ffd04d; }
+    .btn-red   { background:#ea1100; color:#fff; }
+    .btn-red:hover:not(:disabled)   { background:#ff2211; }
+    .btn-ghost { background:#fff; color:#1a1a1a; border:1.5px solid #c2c2c2; }
+    .btn-ghost:hover:not(:disabled) { border-color:#0053e2; color:#0053e2; background:#f0f5ff; }
+    .btn-sm { padding:6px 14px; font-size:.75rem; border-radius:8px; }
+
+    /* ── Card ──────────────────────────────────────────────────────── */
+    .card { background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,.08); padding:24px; }
+
+    /* ── Seek bar (the interactive progress bar) ────────────────────── */
+    .seek-bar { -webkit-appearance:none; appearance:none; width:100%; height:10px; border-radius:9999px;
+                cursor:pointer; outline:none; --fill:0%;
+                background:linear-gradient(90deg,#0053e2 var(--fill),#e5e5e5 var(--fill)); }
+    .seek-bar::-webkit-slider-thumb { -webkit-appearance:none; width:22px; height:22px; border-radius:50%;
+      background:#fff; border:3px solid #0053e2; box-shadow:0 2px 8px rgba(0,83,226,.35);
+      cursor:grab; transition:transform .1s, border-color .1s; }
+    .seek-bar:hover::-webkit-slider-thumb, .seek-bar:focus::-webkit-slider-thumb
+      { transform:scale(1.3); border-color:#ffc220; }
+    .seek-bar:active::-webkit-slider-thumb { cursor:grabbing; }
+    .seek-bar::-moz-range-thumb { width:22px; height:22px; border-radius:50%; background:#fff;
+      border:3px solid #0053e2; box-shadow:0 2px 8px rgba(0,83,226,.35); cursor:grab; }
+    .seek-bar::-moz-range-track { height:10px; border-radius:9999px; background:transparent; }
+
+    /* ── Regular sliders ────────────────────────────────────────────── */
+    .slider { -webkit-appearance:none; appearance:none; height:6px; border-radius:9999px;
+              background:#c2c2c2; cursor:pointer; }
+    .slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+      background:#0053e2; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+    .slider::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:#0053e2;
+      border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+
+    /* ── Status badge ───────────────────────────────────────────────── */
+    .badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:9999px;
+             font-size:.7rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+    .badge-idle    { background:#f5f5f5; color:#868686; }
+    .badge-playing { background:#e6f0ff; color:#0053e2; }
+    .badge-paused  { background:#fff8e1; color:#995213; }
+    .badge-loading { background:#f0f5ff; color:#0053e2; }
+    .badge-done    { background:#e8f5e1; color:#2a8703; }
+    .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .dot-anim { animation:blink 1.4s infinite; }
+    @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+    /* ── Mode tabs ──────────────────────────────────────────────────── */
+    .tab { padding:8px 20px; border-radius:10px; font-weight:600; font-size:.875rem; cursor:pointer;
+           transition:all .15s; color:#868686; background:transparent; border:none; }
+    .tab.active { background:#0053e2; color:#fff; box-shadow:0 2px 10px rgba(0,83,226,.3); }
+    .tab:not(.active):hover { background:#f0f5ff; color:#0053e2; }
+
+    /* ── Misc ───────────────────────────────────────────────────────── */
+    .word-hl { background:#ffc220; border-radius:3px; padding:0 3px; color:#1a1a1a; }
+    textarea, select, input[type=text], input[type=password] {
+      border:1.5px solid #c2c2c2; border-radius:10px; outline:none;
+      transition:border-color .15s,box-shadow .15s; }
+    textarea:focus, select:focus, input:focus
+      { border-color:#0053e2; box-shadow:0 0 0 3px rgba(0,83,226,.18); }
+    kbd { background:#f5f5f5; padding:2px 6px; border-radius:4px; color:#868686;
+          border:1px solid #c2c2c2; font-family:inherit; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header style="background:#0053e2" class="py-4 px-6 shadow-lg sticky top-0 z-10">
+  <div class="max-w-4xl mx-auto flex items-center gap-3">
+    <span class="text-3xl" aria-label="puppy dog">🐶</span>
+    <div>
+      <h1 class="text-white text-xl font-bold leading-tight">Puppy Text Reader</h1>
+      <p style="color:#93b8ff" class="text-xs">Browser TTS + ElevenLabs AI · Seekable Playback</p>
+    </div>
+    <div class="ml-auto">
+      <span id="statusBadge" class="badge badge-idle">
+        <span id="statusDot" class="dot" style="background:#868686"></span>
+        <span id="statusText">Idle</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-4xl mx-auto px-4 py-8 space-y-5">
+
+  <!-- ── Mode Tabs ──────────────────────────────────────────────────────── -->
+  <div class="flex items-center gap-2 bg-white rounded-2xl p-2 shadow-sm" role="tablist">
+    <button id="tabBrowser" class="tab active" role="tab" aria-selected="true"
+      onclick="switchMode('browser')">🌐 Browser TTS</button>
+    <button id="tabEL" class="tab" role="tab" aria-selected="false"
+      onclick="switchMode('elevenlabs')">🧠 ElevenLabs AI</button>
+    <span class="ml-auto text-xs px-3 py-1 rounded-lg font-semibold"
+      style="background:#e8f5e1;color:#2a8703">✨ AI = most natural!</span>
+  </div>
+
+  <!-- ── ElevenLabs Setup Panel ─────────────────────────────────────────── -->
+  <section id="elPanel" class="card hidden" aria-labelledby="elTitle">
+    <h2 id="elTitle" class="font-semibold mb-4" style="color:#1a1a1a">🔑 ElevenLabs Setup</h2>
+    <div class="flex flex-col sm:flex-row gap-3 mb-3">
+      <input id="elApiKey" type="password" class="flex-1 px-3 py-2 text-sm"
+        placeholder="Paste your ElevenLabs API key (xi-api-key)…"
+        aria-label="ElevenLabs API key" />
+      <button onclick="loadELVoices()" id="elLoadBtn" class="btn btn-blue btn-sm whitespace-nowrap">
+        🔃 Load Voices
+      </button>
+    </div>
+    <p class="text-xs" style="color:#868686">
+      Free key at <strong>elevenlabs.io</strong> — 10,000 chars/month free.
+      Text is capped at 4,000 chars per play in this mode.
+    </p>
+    <div id="elMsg" class="mt-3 text-sm rounded-lg px-3 py-2 hidden"></div>
+  </section>
+
+  <!-- ── Text Input ─────────────────────────────────────────────────────── -->
+  <section class="card" aria-labelledby="textLabel">
+    <div class="flex justify-between items-center mb-3">
+      <label id="textLabel" for="textInput" class="font-semibold" style="color:#1a1a1a">
+        📝 Text to Read
+      </label>
+      <div class="flex gap-2">
+        <button onclick="loadSample()" class="btn btn-ghost btn-sm">Sample</button>
+        <button onclick="clearText()"  class="btn btn-ghost btn-sm">Clear</button>
+      </div>
+    </div>
+    <textarea id="textInput" rows="9"
+      class="w-full p-4 text-sm leading-relaxed resize-y"
+      style="color:#1a1a1a;min-height:160px;"
+      placeholder="Paste or type text here, then hit Play! 🚀"
+      aria-label="Text to read aloud"></textarea>
+    <div class="flex justify-between mt-2 text-xs" style="color:#868686">
+      <span id="charCount">0 characters</span>
+      <span id="wordCount">0 words</span>
+    </div>
+  </section>
+
+  <!-- ── Controls ───────────────────────────────────────────────────────── -->
+  <section class="card" aria-labelledby="ctrlLabel">
+    <h2 id="ctrlLabel" class="font-semibold mb-5" style="color:#1a1a1a">🎛️ Controls</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div class="md:col-span-2">
+        <label for="voiceSelect" class="block text-sm font-medium mb-1" style="color:#1a1a1a">🎙️ Voice</label>
+        <select id="voiceSelect" class="w-full px-3 py-2 text-sm" style="color:#1a1a1a"
+          aria-label="Select voice"><option>Loading…</option></select>
+      </div>
+
+      <div>
+        <label for="rateSlider" class="block text-sm font-medium mb-1" style="color:#1a1a1a">
+          ⚡ Speed — <span id="rateVal">1.0</span>x
+        </label>
+        <input type="range" id="rateSlider" class="slider w-full mt-1"
+          min="0.5" max="2" step="0.1" value="1" aria-label="Speech speed"
+          oninput="document.getElementById('rateVal').textContent=parseFloat(this.value).toFixed(1)" />
+        <div class="flex justify-between text-xs mt-1" style="color:#868686"><span>0.5× Slow</span><span>2× Fast</span></div>
+      </div>
+
+      <div>
+        <label for="pitchSlider" class="block text-sm font-medium mb-1" style="color:#1a1a1a">
+          🎵 Pitch — <span id="pitchVal">1.0</span>
+        </label>
+        <input type="range" id="pitchSlider" class="slider w-full mt-1"
+          min="0.5" max="2" step="0.1" value="1" aria-label="Speech pitch"
+          oninput="document.getElementById('pitchVal').textContent=parseFloat(this.value).toFixed(1)" />
+        <div class="flex justify-between text-xs mt-1" style="color:#868686"><span>Low</span><span>High</span></div>
+      </div>
+
+      <div>
+        <label for="volumeSlider" class="block text-sm font-medium mb-1" style="color:#1a1a1a">
+          🔊 Volume — <span id="volumeVal">100</span>%
+        </label>
+        <input type="range" id="volumeSlider" class="slider w-full mt-1"
+          min="0" max="1" step="0.05" value="1" aria-label="Volume"
+          oninput="document.getElementById('volumeVal').textContent=Math.round(this.value*100)" />
+        <div class="flex justify-between text-xs mt-1" style="color:#868686"><span>0%</span><span>100%</span></div>
+      </div>
+
+      <div id="elPitchNote" class="hidden self-center text-xs rounded-lg p-3"
+        style="background:#f0f5ff;color:#0053e2;border:1px solid #b3d0ff">
+        ℹ️ Pitch is for Browser TTS only. ElevenLabs voice character comes from the voice model itself.
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Playback ────────────────────────────────────────────────────────── -->
+  <section class="card">
+
+    <!-- Seek bar -->
+    <div class="mb-2">
+      <div class="flex justify-between text-xs mb-2" style="color:#868686">
+        <span>⏩ Drag to seek anywhere</span><span id="progressPct">0%</span>
+      </div>
+      <input type="range" id="seekBar" class="seek-bar" min="0" max="100" value="0" step="0.1"
+        aria-label="Seek through content" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" />
+    </div>
+
+    <!-- Chapter hint -->
+    <div id="seekHint" class="text-xs text-center mb-4" style="color:#c2c2c2">
+      Tip: <kbd>←</kbd> <kbd>→</kbd> arrow keys jump ±5%
+    </div>
+
+    <!-- Current word -->
+    <div id="currentWordBox"
+      class="rounded-xl mb-5 px-4 py-3 text-center text-sm font-medium"
+      style="background:#f5f5f5;color:#868686;min-height:48px;display:flex;align-items:center;justify-content:center;"
+      aria-live="polite">
+      Current word will appear here…
+    </div>
+
+    <!-- Buttons -->
+    <div class="flex flex-wrap gap-3 justify-center">
+      <button id="btnPlay"   onclick="handlePlay()"   class="btn btn-blue">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        Play
+      </button>
+      <button id="btnPause"  onclick="handlePause()"  class="btn btn-spark" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        Pause
+      </button>
+      <button id="btnResume" onclick="handleResume()" class="btn btn-ghost" disabled style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        Resume
+      </button>
+      <button id="btnStop"   onclick="handleStop()"   class="btn btn-red" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/></svg>
+        Stop
+      </button>
+    </div>
+    <p class="text-center text-xs mt-4" style="color:#c2c2c2">
+      <kbd>Space</kbd> play/pause &nbsp; <kbd>Esc</kbd> stop
+    </p>
+  </section>
+
+  <!-- Support notice -->
+  <div id="noSupportBanner" class="hidden rounded-xl px-4 py-3 text-sm font-medium"
+    style="background:#fff0f0;color:#ea1100;border:1.5px solid #ea1100" role="alert">
+    ⚠️ Your browser doesn't support Web Speech API. Try Chrome/Edge/Safari, or use the ElevenLabs tab.
+  </div>
+
+  <!-- Hidden audio element for ElevenLabs -->
+  <audio id="elAudio" style="display:none" aria-hidden="true"></audio>
+
+  <p class="text-center text-xs pb-4" style="color:#868686">
+    Built with 🐾 by <strong>Code Puppy</strong> ·
+    Browser TTS: no data leaves your machine ·
+    ElevenLabs: audio processed by elevenlabs.io
+  </p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
